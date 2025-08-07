@@ -207,21 +207,16 @@ class AeoLiS(IBmi):
             if 1:
                 # this is the new quasi 2D stuff
                 # this is where we make the 1D grid into a 2D grid to ensure process compatibility
-                
-                # define size of 2D grid 3 is minumum, variable defined for debugging purposes
-                qnr = 3
-                
-                self.p['xgrid_file'] = np.transpose(np.stack([self.p['xgrid_file'] for i in range (qnr)],axis=1))
-                
-                # redefine shape
+                self.p['xgrid_file'] = np.transpose(np.stack((self.p['xgrid_file'], self.p['xgrid_file'], self.p['xgrid_file']),axis=1))
                 self.p['ny'], self.p['nx'] = self.p['xgrid_file'].shape
 
-                # repeat the above for ygrid_file assume dy is equal to dx
                 dy = self.p['xgrid_file'][1,2]-self.p['xgrid_file'][1,1]
-                self.p['ygrid_file'] = np.transpose(np.stack([self.p['ygrid_file'] + i * dy for i in range(qnr)], axis=1))
+
+                # repeat the above for ygrid_file
+                self.p['ygrid_file'] = np.transpose(np.stack((self.p['ygrid_file'], self.p['ygrid_file']+dy, self.p['ygrid_file']+2*dy),axis=1))
                 
                 # repeat the above for bed_file
-                self.p['bed_file'] = np.transpose(np.stack([self.p['bed_file'] for i in range (qnr)],axis=1))
+                self.p['bed_file'] = np.transpose(np.stack((self.p['bed_file'], self.p['bed_file'], self.p['bed_file']),axis=1))
 
                 # change from number of points to number of cells
                 self.p['nx'] -= 1  
@@ -254,7 +249,11 @@ class AeoLiS(IBmi):
         self.s = aeolis.wind.initialize(self.s, self.p)
          
         #initialize vegetation model
-        self.s = aeolis.vegetation.initialize(self.s, self.p)                  
+        self.s = aeolis.vegetation.initialize(self.s, self.p)
+        
+        # Pass toe mask from parameters to state
+        if 'toe_mask' in self.p:
+            self.s['toe_mask'] = self.p['toe_mask']                  
 
         #initialize fence model
         self.s = aeolis.fences.initialize(self.s, self.p)
@@ -350,26 +349,31 @@ class AeoLiS(IBmi):
         self.s = aeolis.bed.update(self.s, self.p)
 
         # avalanching
+        self.s['time'] = self.t  # Add current simulation time to model state (to make accessible in avalanche())
         self.s = aeolis.avalanching.angele_of_repose(self.s, self.p)
         self.s = aeolis.avalanching.avalanche(self.s, self.p)
         
         # reset original bed in marine zone (wet)
         self.s = aeolis.bed.wet_bed_reset(self.s, self.p)
 
-        # calculate average bed level change over time
+    	    # shoreline change rate from Selwyn
+        #self.s = aeolis.bed.sed_supply(self.s, self.p)        
+
+	    # calculate average bed level change over time
         self.s = aeolis.bed.average_change(self.l, self.s, self.p)
 
         # compute dune erosion
         if self.p['process_dune_erosion']:
             self.s = aeolis.erosion.run_ph12(self.s, self.p, self.t)
-            self.s = aeolis.avalanching.angele_of_repose(self.s, self.p) #Since the aeolian module is 
+            self.s = aeolis.avalanching.angele_of_repose(self.s, self.p) # Since the aeolian module is 
             # only run for winds above threshold, also run avalanching routine here
             self.s = aeolis.avalanching.avalanche(self.s, self.p)
 
-        # grow vegetation
+        # grow vegetation & compute bg biomass density
         if self.p['process_vegetation']:
             self.s = aeolis.vegetation.germinate(self.s, self.p)
             self.s = aeolis.vegetation.grow(self.s, self.p)
+            self.s = aeolis.vegetation.bgbiomass(self.s, self.p)
 
         # increment time
         self.t += self.dt * self.p['accfac']
@@ -521,6 +525,7 @@ class AeoLiS(IBmi):
         '''
 
         if var in self.s:
+            #print(f"Type of self.s[{var}]: {type(self.s[var])}")  # DEBUGGING LINE
             return self.s[var].shape
         else:
             return -1

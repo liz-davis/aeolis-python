@@ -57,6 +57,8 @@ INITIAL_STATE = {
         'Hsmix',                            # [m] Wave height for mixing (including setup, TWL)
         'Tp',                               # [s] Wave period for wave runup calculations
         'zne',                              # [m] Non-erodible layer
+        'bgbiomass',                        # [unit] belowground biomass
+        #'toe_mask',                         # Toe mask 
     ),
 }
 
@@ -106,10 +108,16 @@ MODEL_STATE = {
         'hveg',                             # [m] height of vegetation
         'dhveg',                            # [m] Difference in vegetation height per time step
         'dzbveg',                           # [m] Bed level change used for calculation of vegetation growth
+        'dzbveg_waves',                     # [m] Bed level change from wave erosion used for vegetation removal
         'germinate',                        # [bool] Newly vegetated due to germination (or establishment) 
         'lateral',                          # [bool] Newly vegetated due to lateral propagation 
         'vegetated',                        # [bool] Vegetated, determines if vegetation growth or burial is allowed
         'vegfac',                           # Vegetation factor to modify shear stress by according to Raupach 1993
+        'bgbiomass',		    	                # Belowground biomass density
+        'toe_mask',                         # Mask to stop germination seaward of initial dune toe
+        'floodcount',                       # Number of consecutive timesteps grid cell is flooded
+        'max_floodcount',                   # Maximum number of times a vegetated grid cell is flooded 
+        'current_flood_streak',             # Highest recorded flood streak
         'fence_height',                     # Fence height
         'R',                                # [m] wave runup
         'eta',                              # [m] wave setup
@@ -167,7 +175,7 @@ DEFAULT_CONFIG = {
     'th_salt'                       : False,              # Enable wind velocity threshold based on salt
     'th_sheltering'                 : False,              # Enable wind velocity threshold based on sheltering by roughness elements
     'th_nelayer'                    : False,              # Enable wind velocity threshold based on a non-erodible layer
-    'process_avalanche'             : False,              # Enable the process of avalanching
+    'process_avalanche'             : True,              # Enable the process of avalanching
     'process_shear'                 : False,              # Enable the process of wind shear
     'process_tide'                  : False,              # Enable the process of tides
     'process_wave'                  : False,              # Enable the process of waves
@@ -175,6 +183,8 @@ DEFAULT_CONFIG = {
     'process_moist'                 : False,              # Enable the process of moist
     'process_mixtoplayer'           : False,              # Enable the process of mixing 
     'process_wet_bed_reset'         : False,              # Enable the process of bed-reset in the intertidal zone
+    'process_sed_supply'            : False,              # Enable the process of beach growth
+    #'process_linear_scr'            : False,              # Enable process of linear shoreline change rate
     'process_meteo'                 : False,              # Enable the process of meteo
     'process_salt'                  : False,              # Enable the process of salt
     'process_humidity'              : False,              # Enable the process of humidity
@@ -270,7 +280,6 @@ DEFAULT_CONFIG = {
     'facDOD'                        : .1,                 # [-] Ratio between depth of disturbance and local wave height
     'csalt'                         : 35e-3,              # [-] Maximum salt concentration in bed surface layer
     'cpair'                         : 1.0035e-3,          # [MJ/kg/oC] Specific heat capacity air
-
     'fc'                            : 0.11,               # [-] Moisture content at field capacity (volumetric)
     'w1_5'                          : 0.02,               # [-] Moisture content at wilting point (gravimetric)
     'resw_moist'                    : 0.01,               # [-] Residual soil moisture content (volumetric) 

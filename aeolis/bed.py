@@ -230,6 +230,55 @@ def wet_bed_reset(s, p):
     return s
 
 
+# def sed_supply(s, p): ## FROM SELWYN!
+#     ''' Increase elevation of beach topography.
+
+#     Parameters
+#     ----------
+#     s : dict
+#         Spatial grids
+#     p : dict
+#         Model configuration parameters
+
+#     Returns
+#     -------
+#     dict
+#         Spatial grids
+
+#     '''
+
+#     # if p['process_sed_supply']:
+        
+#     #     sed_inc = p['sed_inc']
+        
+#     #     e_dzb = s['dzb'][:]
+#     #     e_dzb[e_dzb > 0] = 0  # removing accretion from dzb to only isolate locations where erosion is happening 
+        
+#     #     temp = np.zeros_like(s['zb']) + sed_inc + e_dzb 
+        
+#     #     # print(temp)
+#     #     ix = p['dune_toe_elevation'] > (s['zb'])
+#     #     # ix = 3.5 > s['zb']
+
+#     #     # print(ix)
+#     #     # print(s['zb'][:][0])
+#     #     # for len(s['zb'][:][0])
+#     #     s['zb'][:][ix] = s['zb'][:][ix] + abs(temp[ix])
+#     #     # s['zb'][ix] += sed_inc
+        
+#     if p['process_linear_scr']:
+#         xi = p['dune_toe_elevation'] > (s['zb'])
+#         beach_z = s['zb'][xi]
+#         sed_inc = p['sed_inc']
+#         b = beach_z[0] + sed_inc
+#         x = s['x'][xi]
+#         slope = p['beach_slope']
+#         new_beach = slope*x + b
+#         s['zb'][xi] =new_beach
+
+#         # exit() 
+#     return s
+
 
 def update(s, p):
     '''Update bathymetry and bed composition
@@ -484,14 +533,19 @@ def average_change(l, s, p):
     #Compute bed level change with previous time step [m/timestep]
     s['dzb'] = s['zb'] - l['zb']
 
-    # Collect time steps
+    # Collect time steps & annualize
     s['dzbyear'] = s['dzb'] * (3600. * 24. * 365.25) / (p['dt_opt'] * p['accfac'])
+    
+    # Weighted (running) average
     n = (p['dt_opt'] * p['accfac']) / p['avg_time']
     s['dzbavg'] = n*s['dzbyear']+(1-n)*l['dzbavg']
     
     # Calculate average bed level change as input for vegetation growth [m/year]
-    s['dzbveg'] = s['dzbavg'].copy()
+    #s['dzbveg'] = s['dzbavg'].copy()
     # s['dzbveg'] = s['dzbyear'].copy()
+    
+    # CLIP to realistic max/min to avoid spikes (Liz)
+    s['dzbveg'] = np.clip(s['dzbavg'], -1.0, 1.0)
 
     if p['_time'] < p['avg_time']:
         s['dzbveg'] *= 0.

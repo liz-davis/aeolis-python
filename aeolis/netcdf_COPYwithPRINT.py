@@ -332,8 +332,8 @@ def initialize(outputfile, outputvars, s, p, dimensions):
         
         # Liz Debugging
         #print("Variables passed to append:", nc.variables) # CONFIRMED
-        #if 'bgbiomass' in nc.variables:
-            #print("Type of bgbiomass in variables:", type(nc.variables['bgbiomass'])) # bg biomass is passed to append as a netcdf variable as bgbiomass(time, n, s)
+        if 'bgbiomass' in nc.variables:
+            print("Type of bgbiomass in variables:", type(nc.variables['bgbiomass'])) # bg biomass is passed to append as a netcdf variable as bgbiomass(time, n, s)
 
 def append(outputfile, variables):
     '''Append variables to existing netCDF4 output file
@@ -366,53 +366,139 @@ def append(outputfile, variables):
     if not HAVE_NETCDF:
         return
     
+    #with netCDF4.Dataset(outputfile, 'a') as nc:
+       # Check and extract bgbiomass if it exists in the file
+       # if isinstance(nc.variables['bgbiomass'][:], np.ma.MaskedArray):
+       #     print(nc.variables['bgbiomass'])
+       #     variables['bgbiomass'] = nc.variables['bgbiomass'][:].filled(0)  # Replace masked values with 0
+       #     print("Before extraction:", type(nc.variables['bgbiomass']))
+       #     print("After extraction:", type(variables['bgbiomass']))
+       #     print("Shape of bgbiomass data:", variables['bgbiomass'].shape)
+       #     #print(variables['bgbiomass'])
+       # else:
+       #     variables['bgbiomass'] = np.array(nc.variables['bgbiomass'][:])
+       
+       # Liz Debugging
+       # if 'bgbiomass' in nc.variables:
+       #     bgbiomass_var = nc.variables['bgbiomass']
+       #     print("Type of bgbiomass:", type(bgbiomass_var))
+       #     print("initial shape of bgbiomass:", bgbiomass_var.shape)
+       #     # if bgbiomass_var.shape[0] == 0:  # If the first dimension is 0
+       #     #     print("bgbiomass is empty. Initializing with zeros.")
+       #     #     variables['bgbiomass'] = np.zeros((1, *bgbiomass_var.shape[1:]))
+       #     # else:
+       #     #     variables['bgbiomass'] = bgbiomass_var[:].filled(0)  # Replace masked values with zeros
+       #     # print("bgbiomass shape after extraction:", variables['bgbiomass'].shape)
+       # else:
+       #     print("bgbiomass not found in the NetCDF file")
+       
+       
+       # if 'bgbiomass' in nc.variables:
+       #     print("Before extraction:", type(nc.variables['bgbiomass']))
+       #     variables['bgbiomass'] = np.array(nc.variables['bgbiomass'][:])
+       #     print("After extraction:", type(variables['bgbiomass']))
+       #     print("Shape of bgbiomass data:", variables['bgbiomass'].shape)
+       #     print(variables['bgbiomass'])
+       # else:
+       #     print("bgbiomass not found in the NetCDF file")
+       
+    
+    #with netCDF4.Dataset(outputfile, 'a') as nc:
+        # # Check if bgbiomass exists & handle correctly
+        # if 'bgbiomass' in nc.variables: # should be 
+        #     bgbiomass_var = nc.variables['bgbiomass']
+        #     print("bgbiomass before extraction:", type(bgbiomass_var))
+        #     print("Initial shape of bgbiomass:", bgbiomass_var.shape)
+            
+        #     # test to see if rhoveg is different... it is NOT!
+        #     rhoveg_var = nc.variables['rhoveg']
+        #     print("rhoveg before extraction:", type(rhoveg_var)) # comes out as netCDF4 variable
+        #     print("Initial shape of rhoveg:", rhoveg_var.shape)  # comes out as shape of (0, 6, 228)
+            
+        #     # Print rhoveg and bgbiomass
+        #     print("contents of bgbiomass_var:")
+        #     print(bgbiomass_var[:])
+            
+        #     print("contents of rhoveg_var:")
+        #     print(rhoveg_var[:])            
+            
+        #     # Assign bgbiomass values
+        #     variables['bgbiomass'] = np.array(bgbiomass_var[:])
+            
+        #     # Debug output
+        #     print("After extraction:", type(variables['bgbiomass']))
+        #     print("Shape of bgbiomass data:", variables['bgbiomass'].shape)
+        #     print(variables['bgbiomass'])
+        # else:
+        #     print("bgbiomass not found in the NetCDF")
         
     with netCDF4.Dataset(outputfile, 'a') as nc:
         # Get the current time index and add the time data
         i = nc.variables['time'].shape[0]
         print(f"Current time index: {i}")
         
-        # time_to_append = np.atleast_1d(variables['time'])
-        # nc.variables['time'][i] = time_to_append
-        
         # Check if time needs to be appended as an array (if it's scalar, wrap it in an array)
-        #time_to_append = np.array([variables['time']]) if np.isscalar(variables['time']) else variables['time']
+        time_to_append = np.array([variables['time']]) if np.isscalar(variables['time']) else variables['time']
         
-        nc.variables['time'][i] = variables['time']
-        #nc.variables['time'][i] = time_to_append
+        #nc.variables['time'][i] = variables['time']
+        nc.variables['time'][:] = np.append(nc.variables['time'][:], time_to_append)
         
+        # # Check if bgbiomass exists & handle correctly
+        # if 'bgbiomass' in nc.variables: # should be 
+        #     bgbiomass_var = nc.variables['bgbiomass']
+        #     print("1. bgbiomass before extraction:", type(bgbiomass_var)) # comes out as netCDF variable
+        #     print("2. Initial shape of bgbiomass:", bgbiomass_var.shape) # comes out as shape of (1, 6, 228)
+            
+        #     # Assign bgbiomass values
+        #     variables['bgbiomass'] = np.array(bgbiomass_var[:])
+            
+        #     # Debug output
+        #     print("3. Data type after extraction:", type(variables['bgbiomass']))
+        #     print("4. Shape of bgbiomass data:", variables['bgbiomass'].shape)
+        #     #print(variables['bgbiomass'])
+        # else:
+        #     print("bgbiomass not found in the NetCDF")
         
         # Append variables, including bgbiomass
         for k, v in variables.items():
-            #print(f"Processing variable: {k}")
-            #print(f"Type of variable {k}: {type(v)}") 
+            print(f"Processing variable: {k}")
+            print(f"Type of variable {k}: {type(v)}")
             
             if k == 'time':
-                #print("Time variable has already been updated")
+                print("Time variable has already been updated")
                 #nc.variables['time'][:] = np.append(nc.variables['time'][:], v)
                 continue    
         
-            # if k == 'bgbiomass': # handle bgbiomass specifically
-            #     if 'bgbiomass' in nc.variables:
-            #         bgbiomass_var = nc.variables['bgbiomass']
+            if k == 'bgbiomass': # handle bgbiomass specifically
+                if 'bgbiomass' in nc.variables:
+                    bgbiomass_var = nc.variables['bgbiomass']
+                    #rhoveg_var = nc.variables['rhoveg']
+                    #print("1. bgbiomass before extraction:", type(bgbiomass_var)) # comes out as netCDF variable
+                    #print("2. Initial shape of bgbiomass:", bgbiomass_var.shape) # comes out as shape of (1, 6, 228)
                     
-            #         # Debug the netcdf writing issues
-            #         print(f"1. Fill Value {getattr(bgbiomass_var, '_FillValue', 'None')}")
-            #         print(f"1a. Shape: {bgbiomass_var.shape}")
+                    # Debug the netcdf writing issues
+                    print(f"1. Fill Value {getattr(bgbiomass_var, '_FillValue', 'None')}")
+                    print(f" Shape: {bgbiomass_var.shape}")
                     
-            #         # Validate and debug bgbiomass data before writing
-            #         print("2. Data type of bgbiomass being written:", type(v))
-            #         print("3. Shape of bgbiomass being written:", v.shape)
-            #         print("4. Min value of bgbiomass:", np.min(v))
-            #         print("5. Max value of bgbiomass:", np.max(v))
-            #         #print("6. Any NaN in bgbiomass:", np.isnan(v).any())
-            #         #print("7. Any inf in bgbiomass:", np.isinf(v).any())
+                    # Validate and debug bgbiomass data before writing
+                    print("2. Data type of bgbiomass being written:", type(v))
+                    print("3. Shape of bgbiomass being written:", v.shape)
+                    print("4. Min value of bgbiomass:", np.min(v))
+                    print("5. Max value of bgbiomass:", np.max(v))
+                    print("6. Any NaN in bgbiomass:", np.isnan(v).any())
+                    print("7. Any inf in bgbiomass:", np.isinf(v).any())
                     
-            #         # Write the bgbiomass data....
-            #         nc.variables['bgbiomass'][i, ...] = v
-            #     else:
-            #         print("bgbiomass not found in the NetCDF")
-            #     continue
+                    # Write the bgbiomass data.... TEST
+                    nc.variables['bgbiomass'][i, ...] = v
+                    
+                    # Extract & assign bgbiomass values
+                    # v = np.array(bgbiomass_var[:])  # Extract bgbiomass data... THESE RUN, COMMENTING OUT TO SEE IF I CAN FIX A BUG... DO NOT DELETE!!
+                    # variables['bgbiomass'] = v
+                    #print("3. Data type after extraction:", type(v))
+                    #print("4. Shape of bgbiomass data:", v.shape)
+                else:
+                    print("bgbiomass not found in the NetCDF")
+                continue
             
             
             # this is where a quasi 2D model is stored in 1D

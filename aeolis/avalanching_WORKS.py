@@ -29,8 +29,6 @@ from __future__ import absolute_import, division
 
 import logging
 import numpy as np
-import numpy.ma as ma
-import os
 
 # package modules
 from aeolis.utils import *
@@ -58,22 +56,15 @@ def angele_of_repose(s,p):
         Spatial grids
         
     '''
-          
-    # Base parameters
-    theta_min = 34.0 # Bare sand
-    theta_max = 50.0 # Maximum vegetation reinforcement
+        
+    # comment Lisa: dependence on moisture content is not yet implemented 
+    # Can we do something with theta dependent on vegetation cover (larger rhoveg = larger theta?)    
+        
+    theta_stat = p['theta_stat']
+    theta_dyn  = p['theta_dyn']
     
-    # Spatially varying static angle of repose
-    s['theta_stat'] = np.clip(theta_min + 0.00675 * s['bgbiomass'], theta_min, theta_max)
-    
-    # Compute dynamic angle of repose as slightly lower
-    s['theta_dyn'] = np.clip(s['theta_stat'] - 3, 33.0, theta_max - 3)
-    
-    # theta_stat = p['theta_stat']
-    # theta_dyn  = p['theta_dyn']
-    
-    # s['theta_stat'] = theta_stat
-    # s['theta_dyn'] = theta_dyn
+    s['theta_stat'] = theta_stat
+    s['theta_dyn'] = theta_dyn
         
     return s
 
@@ -106,51 +97,28 @@ def avalanche(s, p):
         ny = p['ny']+1
 
         #parameters
+
         tan_stat = np.tan(np.deg2rad(s['theta_stat']))
         tan_dyn = np.tan(np.deg2rad(s['theta_dyn']))
+        
+
+
         E = 0.2
-        max_iter_ava = p['max_iter_ava']
 
         grad_h_down = np.zeros((ny,nx,4))
         flux_down = np.zeros((ny,nx,4))
         slope_diff = np.zeros((ny,nx))
         grad_h = np.zeros((ny,nx))
 
+        max_iter_ava = p['max_iter_ava']
         
         max_grad_h, grad_h, grad_h_down = calc_gradients(s['zb'], nx, ny, s['ds'], s['dn'], s['zne'])
         
-        # === Slope angle logging ===
-        log_file = "theta_exceedance_log.csv"  # saved in current working directory
-
-        # Create log file with header if it doesn't exist yet
-        if not os.path.exists(log_file):
-            with open(log_file, "w") as f:
-                f.write("time,y,x,theta_deg\n")
-
-        # Compute slope angle in degrees from grad_h (already computed)
-        theta_deg_2d = np.rad2deg(np.arctan(grad_h))
-        critical = theta_deg_2d > s['theta_dyn']
-
-        # Log all cells where θ > theta_dyn
-        if np.any(critical):
-            time_val = s.get('time', -1)
-
-            y_grid, x_grid = np.meshgrid(np.arange(grad_h.shape[0]), np.arange(grad_h.shape[1]), indexing='ij')
-            x_coords = s['x'][y_grid, x_grid]
-            y_coords = s['y'][y_grid, x_grid]
-            angles = theta_deg_2d
-
-            with open(log_file, "a") as f:
-                for i, j in zip(*np.where(critical)):
-                    f.write(f"{time_val:.2f},{y_coords[i,j]:.2f},{x_coords[i,j]:.2f},{angles[i,j]:.2f}\n")
-        
         s['gradh'] = grad_h.copy()
 
-        #initiate_avalanche = (max_grad_h > tan_stat)  WORKED BEFORE!! COMMENTED FOR TESTING
-        initiate_avalanche = max_grad_h > np.max(tan_stat)
+        initiate_avalanche = (max_grad_h > tan_stat) 
         ix_dyn = grad_h > tan_dyn
-        print(f"[Avalanche] Cells where grad_h > tan_dyn: {np.sum(ix_dyn)}")
-        
+        #print(f"[Avalanche] Cells where grad_h > tan_dyn: {np.sum(ix_dyn)}")
 
         if initiate_avalanche:
 
@@ -163,7 +131,7 @@ def avalanche(s, p):
 
                 max_grad_h, grad_h, grad_h_down = calc_gradients(s['zb'], nx, ny, s['ds'], s['dn'], s['zne'])
 
-                if max_grad_h < np.max(tan_dyn):
+                if max_grad_h < tan_dyn:
                     break
 
                 # Calculation of flux
@@ -174,7 +142,7 @@ def avalanche(s, p):
                 #print(f"→ grad_h > tan_dyn: {np.sum(grad_h > tan_dyn)}")
                 #print(f"→ grad_h_nonerod > 0: {np.sum(grad_h_nonerod > 0)}")
                 #print(f"→ Combined ix condition: {np.sum(ix)}")
-                slope_diff[ix] = np.tanh(grad_h[ix]) - np.tanh(0.9*tan_dyn[ix])   
+                slope_diff[ix] = np.tanh(grad_h[ix]) - np.tanh(0.9*tan_dyn)   
                 #print(f"→ slope_diff after 1st condition: max = {np.max(slope_diff):.6f}, min = {np.min(slope_diff):.6f}")
                 
                 ix = grad_h_nonerod < grad_h - tan_dyn 
@@ -309,3 +277,4 @@ def calc_gradients(zb, nx, ny, ds, dn, zne):
 
     return max_grad_h, grad_h, grad_h_down
     
+

@@ -117,49 +117,6 @@ def vegshear(s, p):
 
     return s
 
-def vegerosion(s, p):
-    """
-    Removes vegetation where erosion exceeds 0.3 m in the last time step.
-    """
-    
-    erosion_threshold = 0.3  # meters
-    #ix_erosion = s['dzbveg_waves'] >= erosion_threshold
-    
-    ny = s['dzbveg_waves'].shape[0]
-
-    for iy in range(ny):
-        ix_erosion = s['dzbveg_waves'][iy, :] >= erosion_threshold
-        if np.any(ix_erosion):
-            i_cutoff = np.where(ix_erosion)[0][-1]  # most landward erosion
-            s['rhoveg'][iy, :i_cutoff+1] = 0.0
-            s['hveg'][iy, :i_cutoff+1] = 0.0
-            s['vegetated'][iy, :i_cutoff+1] = False
-            s['lateral'][iy, :i_cutoff+1] = 0.0
-            print(f"[iy={iy}] Vegetation removed seaward of x={i_cutoff} due to erosion ≥ {erosion_threshold} m")
-
-    # Consistency enforcement
-    s['vegetated'][s['rhoveg'] <= 0] = False
-    return s
-    
-    # ix_erosion = np.any(s['dzbveg_waves'] >= erosion_threshold, axis = 0)
-
-    # if np.any(ix_erosion):
-    #     # Find the most landward eroded cell (largest x-index)
-    #     erosion_extent = np.where(ix_erosion)[0].max()
-        
-    #     # Apply removal to all seaward cells (0 through erosion_extent) across all rows
-    #     s['rhoveg'][:, :erosion_extent+1] = 0.0
-    #     s['hveg'][:, :erosion_extent+1] = 0.0
-    #     s['vegetated'][:, :erosion_extent+1] = False
-    #     s['lateral'][:, :erosion_extent+1] = 0.0
-        
-    #     print(f"Vegetation removed seaward of x-index {erosion_extent} due to erosion ≥ {erosion_threshold} m")
-
-    # # Enforce vegetated = False wherever rhoveg == 0
-    # s['vegetated'][s['rhoveg'] <= 0] = False
-    
-    # return s
-
 
 def germinate(s,p):
     ny = p['ny']
@@ -174,26 +131,16 @@ def germinate(s,p):
     # Determine which cells are already germinated before
     # s['germinate'][:, :] = False
     s['germinate'][:, :] = (s['rhoveg'] > 0.5 * drhoveg_max)
-    
-    # Recalculate toe_mask based on bed elevation
-    if 'toe_mask' not in s or s['toe_mask'].shape != s['zb'].shape:
-        s['toe_mask'] = s['zb'] >= p['dune_toe_elevation']
 
     # Germination (convert from /year to /timestep)
     # p_germinate_year = p['germinate']                                
-    p_germinate_dt = 1-(1-p['germinate'])**(1./n)
+    p_germinate_dt = 1-(1-p['germinate']  )**(1./n)
+
+    # random_prob = np.zeros((s['germinate'].shape))
     random_prob = np.random.random((s['germinate'].shape))
     
-    # Germinate new cells (only if no erosion (dzb>=0) and above dune toe elevation) -> add to vegetated
-    #s['germinate'] = (s['dzbveg'] >= 0.) * (random_prob <= p_germinate_dt)
-    s['germinate'] = (s['dzbveg'] >= 0.) * (s['toe_mask']) * (random_prob <= p_germinate_dt)
-    
-    # LIZ DEBUG: Print germination locations
-    # new_germ = s['germinate'].astype(bool) & ~s['vegetated'].astype(bool)
-    # iy_vals, ix_vals = np.where(new_germ)
-    # for iy, ix in zip(iy_vals, ix_vals):
-    #     print(f"[Time {p['_time']:.1f}] New cell germinated at grid (iy={iy}, ix={ix})")
-    
+    # Germinate new cells (only if no erosion, dzb>=0) and add to vegetated
+    s['germinate'] = (s['dzbveg'] >= 0.) * (random_prob <= p_germinate_dt)
     s['vegetated'] = np.logical_or(s['germinate'], s['vegetated'])
     # s['germinate'] = np.minimum(s['germinate'], 1.)
 
@@ -216,41 +163,13 @@ def germinate(s,p):
     drhoveg[:-1,:,3] = np.maximum((s['rhoveg'][1:,:]-s['rhoveg'][:-1,:]) / s['dn'][:-1,:], 0.)  # negative y-direction
     
     lat_veg = drhoveg > 0.
+    
     s['drhoveg'] = np.sum(lat_veg[:,:,:], 2)
     
     p_lateral = p_lateral_cell * s['drhoveg']
     
-    random_prob_lat = np.random.random(s['germinate'].shape)
-    lat_expanded = (random_prob_lat <= p_lateral)
-    new_lat_veg = lat_expanded & ~s['vegetated']
-
-    # DEBUG PRINT: Track expansion
-    ny, nx = s['rhoveg'].shape
-    for iy in range(ny):
-        for ix in range(nx):
-            if new_lat_veg[iy, ix]:
-                neighbors = []
-                if ix > 0 and s['rhoveg'][iy, ix - 1] > 0:
-                    neighbors.append('W')
-                if ix < nx - 1 and s['rhoveg'][iy, ix + 1] > 0:
-                    neighbors.append('E')
-                if iy > 0 and s['rhoveg'][iy - 1, ix] > 0:
-                    neighbors.append('N')
-                if iy < ny - 1 and s['rhoveg'][iy + 1, ix] > 0:
-                    neighbors.append('S')
-    
-                print(f"NEW LATERAL EXPANSION at (x={ix}, y={iy}) from neighbors: {', '.join(neighbors)}")
-
-    # num_lat_expanded = np.sum(new_lat_veg)
-    # if num_lat_expanded > 0:
-    #     print(f"LATERAL EXPANSION occurred in {num_lat_expanded} new cells.")
-
-    s['vegetated'] = np.logical_or(lat_expanded, s['vegetated'])
-    
-    #s['vegetated'] = np.logical_or((random_prob_lat <= p_lateral), s['vegetated'])
+    s['vegetated'] = np.logical_or((random_prob <= p_lateral), s['vegetated'])
     # s['lateral'] = np.minimum(s['lateral'], 1.)
-    # Call erosion-based removal at the end
-    
 
     return s
 
@@ -277,10 +196,6 @@ def grow (s, p): #DURAN 2006
         s['hveg'] += s['dhveg']*(p['dt_opt'] * p['accfac']) / (365.25*24.*3600.)
         s['hveg'] = np.maximum(np.minimum(s['hveg'], p['hveg_max']), 0.)
         s['rhoveg'] = (s['hveg']/p['hveg_max'])**2
-        
-        # Enforce rhoveg max here
-        rhoveg_max = p['rhoveg_max']
-        s['rhoveg'] = np.minimum(s['rhoveg'], rhoveg_max)
 
     else:
         t_veg = p['t_veg']/365
@@ -289,12 +204,10 @@ def grow (s, p): #DURAN 2006
         ix2 = s['rhoveg'] > rhoveg_max
         s['rhoveg'][ix2] = rhoveg_max
         ixzero = s['rhoveg'] <= 0
-        
         if p['V_ver'] > 0:
             s['drhoveg'][ix] = (rhoveg_max - s['rhoveg'][ix])/t_veg - (v_gam/p['hveg_max'])*np.abs(s['dzbveg'][ix] - p['dzb_opt'])*p['veg_gamma']
         else:
             s['drhoveg'][ix] = 0
-        
         s['rhoveg'] += s['drhoveg']*(p['dt']*p['accfac'])/(365.25 * 24 *3600)
         irem = s['rhoveg'] < 0
         s['rhoveg'][irem] = 0
@@ -305,20 +218,7 @@ def grow (s, p): #DURAN 2006
     # Plot has to vegetate again after dying
     dhveg_max = p['V_ver'] * (p['dt_opt'] * p['accfac']) / (365.25*24.*3600.)
     drhoveg_max = (dhveg_max/p['hveg_max'])**2
-    
-    # LIZ DEBUG: Check where vegetation is about to be removed due to low rhoveg ---
-    veg_lost = s['vegetated'] & (s['rhoveg'] < 0.5 * drhoveg_max)
-    if np.any(veg_lost):
-        iy_vals, ix_vals = np.where(veg_lost)
-        for iy, ix in zip(iy_vals, ix_vals):
-            rhoveg_val = s['rhoveg'][iy, ix]
-            dzbveg_val = s['dzbveg'][iy, ix]
-            print(f"[Time {p['_time']:.1f}] Vegetation lost at iy={iy}, ix={ix} "
-                  f"(rhoveg={rhoveg_val:.5f}, dzbveg={dzbveg_val:.3f} m)")
-
-    
     s['vegetated'] *= (s['rhoveg'] >= 0.5 * drhoveg_max)
-    #s['vegetated'] *= (s['rhoveg'] >= 0.5 * drhoveg_max)
     # s['germinate'] *= (s['rhoveg']!=0.)
     # s['lateral'] *= (s['rhoveg']!=0.)
 
@@ -336,70 +236,107 @@ def grow (s, p): #DURAN 2006
     #     s['vegetated'][ix_flooded]  = False
     #     # s['lateral'][ix_flooded]    = False
 
-    # Kill vegetation below elevation threshold
     ix = s['zb'] < p['veg_min_elevation']
     s['rhoveg'][ix] = 0
     s['hveg'][ix] = 0
     s['vegetated'][ix] = False
     # s['lateral'][ix] = False
     
-    # Call erosion-based removal at the end
-    #s = vegerosion(s,p)
     
+    # Initialize flood counter
+    if 'floodcount' not in s:
+        s['floodcount'] = np.zeros_like(s['zb'])
+        
+    if 'max_floodcount' not in s:
+        s['max_floodcount'] = np.zeros_like(s['zb'])  # Track the max CONSECUTIVE flooding duration
+        
+    if 'current_flood_streak' not in s:
+        s['current_flood_streak'] = np.zeros_like(s['zb'])
+
+    # Identify vegetated areas
+    ix_veg = s['rhoveg'] > 0
+    print(f"Vegetated cells (xi_veg): {ix_veg[0]}")
+    
+    # Identify flooded cells that are vegetated
+    ix_flooded = ix_veg & (s['zb'] < s['TWL'])
+    # print(f"s['zb'] (bed elevation): {s['zb'][0]}")
+    # print (f"s['TWL'] (total water level): {s['TWL'][0]}")
+    # print(f"Comparison of s['zb'] < s['TWL']:\n{s['zb'][0] < s['TWL'][0]}")
+    print(f"Flooded cells (ix_flooded): {ix_flooded[0]}")
+
+    # Increase flood count if continuously flooded, otherwise reset to zero
+    s['floodcount'][ix_flooded] += 1
+    s['floodcount'][~ix_flooded] = 0                # Reset to zero if not flooded
+    
+    # Track **true maximum consecutive flooding streak**
+    s['current_flood_streak'][ix_flooded] += 1
+    s['current_flood_streak'][~ix_flooded] = 0  # Reset streak when cell is dry
+    
+
+
+    print(f"Current floodcount max: {np.max(s['floodcount'])}")
+    print(f"Before update: Max tracked flood count = {np.max(s['max_floodcount'])}")
+    
+    # Track maximum consecutive flooding for each vegetated cell 
+    s['max_floodcount'] = np.maximum(s['max_floodcount'], s['current_flood_streak'])
+    print(f"After update: Max tracked flood count = {np.max(s['max_floodcount'])}")
+    
+    # Debugging line
+    print(f"Flood Count Array: {s['floodcount'][0]}")
+    
+
+    # Kill vegetation only if flooded for more than the threshold time steps
+    flood_threshold = p.get('flood_threshold', 4)  # Default threshold of 24 time steps
+    print(f"Number of cells meeting flood threshold: {np.sum(s['floodcount'] >= flood_threshold)}")
+    ix_dying = (s['floodcount'] >= flood_threshold) & (s['rhoveg'] > 0)
+    print(f"Number of vegetated cells meeting threshold: {np.sum(ix_dying)}")  # After masking with vegetation
+    print(f"ix_dying (cells marked for vegetation removal): {np.where(ix_dying)[0]}")
+    print(f"Flooded & Vegetated Cells: {np.where(ix_flooded & ix_veg)[0]}")
+    
+    print(f"Cells Exceeding Threshold: {np.where(s['floodcount'] >= flood_threshold)[0]}")
+    
+    # Confirmation print message
+    if np.any(ix_dying):  # Check if any cell meets the threshold
+        print(f"Flood threshold met for {np.sum(ix_dying)} cells. Vegetation removed. Max consecutive flooding: {np.max(s['max_floodcount'])}")
+
+    # Kill vegetation
+    s['rhoveg'][ix_dying] = 0.
+    s['hveg'][ix_dying] = 0.
+    s['vegetated'][ix_dying] = False
+    
+    # Debugging
+    print(f"Vegetation killed: {np.sum(ix_dying)} cells")
+    
+    # Reset flood count only for cells where vegetation just died
+    s['floodcount'][ix_dying] = 0
+    
+    # Debugging: Print the true max flood count
+    print(f"Floodcount after reset: {np.max(s['floodcount'])}")
+    print(f"DEBUG: Max recorded consecutive flooding = {np.max(s['max_floodcount'])}")
+
+
     return s
+
+# def vegerosion(s,p):
+#     """
+#     Removes vegetation from the spatial grid if the average bed level change (dzbveg) is <= -30 cm (erosion).
     
-    # # Initialize flood counter
-    # if 'floodcount' not in s:
-    #     s['floodcount'] = np.zeros_like(s['zb'])
-        
-    # if 'max_floodcount' not in s:
-    #     s['max_floodcount'] = np.zeros_like(s['zb'])  # Track the max CONSECUTIVE flooding duration
-        
-    # if 'current_flood_streak' not in s:
-    #     s['current_flood_streak'] = np.zeros_like(s['zb'])
-
-    # # Identify vegetated areas
-    # ix_veg = s['rhoveg'] > 0
+#     Args:
+#         s (dict): The state dictionary containing spatial and vegetation variables.
+#         p (dict): The parameter dictionary containing model parameters.
     
-    # # Identify flooded cells (with water levels more than 0.5 m above the bed surface) that are vegetated
-    # ix_flooded = ix_veg & (s['zb'] + 0.5 < s['TWL'])
-
-    # # Increase flood count if continuously flooded, otherwise reset to zero
-    # s['floodcount'][ix_flooded] += 1
-    # s['floodcount'][~ix_flooded] = 0                # Reset to zero if not flooded
+#     Modifies the state dictionary in place.
+#     """
+#     # Check if there is vegetation (rhoveg > 0)
+#     if np.any(s['rhoveg'] > 0):
+#         ix_erosion = s['dzbveg'] <= -0.3 # erosion of 30 cm or more
+#         print("Erosion Condition Met")
+#         s['rhoveg'][ix_erosion] = 0  # Set vegetation density to 0 (remove vegetation)
+#         s['hveg'][ix_erosion] = 0    # Set vegetation height to 0
+#         s['vegetated'][ix_erosion] = False  # Mark vegetation as removed
     
-    # # Track **true maximum consecutive flooding streak**
-    # s['current_flood_streak'][ix_flooded] += 1
-    # s['current_flood_streak'][~ix_flooded] = 0  # Reset streak when cell is dry
     
-    # # Track maximum consecutive flooding for each vegetated cell 
-    # s['max_floodcount'] = np.maximum(s['max_floodcount'], s['current_flood_streak'])
-
-
-    # # Kill vegetation only if flooded for more than the threshold time steps
-    # flood_threshold = p.get('flood_threshold', 6)  # Default threshold of 6 time steps
-    # ix_dying = (s['floodcount'] >= flood_threshold) & (s['rhoveg'] > 0)
-
-    
-    # # Confirmation print message
-    # if np.any(ix_dying):  # Check if any cell meets the threshold
-    #     print(f"Flood threshold met for {np.sum(ix_dying)} cells. Vegetation removed. Max consecutive flooding: {np.max(s['max_floodcount'])}")
-
-    # # Kill vegetation
-    # s['rhoveg'][ix_dying] = 0.
-    # s['hveg'][ix_dying] = 0.
-    # s['vegetated'][ix_dying] = False
-    
-    # # Debugging
-    # print(f"Vegetation killed: {np.sum(ix_dying)} cells")
-    
-    # # Reset flood count only for cells where vegetation just died
-    # s['floodcount'][ix_dying] = 0
-    
-
-    #return s
-
-
+#     return s
 
 def bgbiomass(s, p):
     '''
